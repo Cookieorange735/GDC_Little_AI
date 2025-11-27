@@ -3,24 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 虛擬圍籬監控系統</title>
+    <title>AI 虛擬圍籬監控系統 (警報版)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
 
     <style>
-        /* --- Professional UI Design (Dark/Cyberpunk Style) --- */
+        /* --- Cyberpunk UI Style --- */
         :root {
             --primary-color: #00ffcc;
             --danger-color: #ff3333;
             --bg-color: #0d1117;
-            --panel-bg: rgba(13, 17, 23, 0.85);
+            --panel-bg: rgba(13, 17, 23, 0.9);
         }
 
         body {
             margin: 0;
             background-color: var(--bg-color);
-            font-family: "Consolas", "Monaco", "Courier New", monospace; /* 使用等寬字體更像終端機 */
+            font-family: "Consolas", "Monaco", "Courier New", monospace;
             color: white;
             overflow: hidden;
             display: flex;
@@ -30,7 +30,7 @@
 
         #main-view {
             position: relative;
-            flex: 1; /* 佔據上方大部分空間 */
+            flex: 1;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -45,9 +45,8 @@
             object-fit: cover;
         }
 
-        /* 儀表板區域 */
         #dashboard {
-            height: 35%; /* 下方 35% 為資訊區 */
+            height: 35%;
             background: var(--panel-bg);
             padding: 10px;
             box-sizing: border-box;
@@ -74,54 +73,42 @@
             border-radius: 4px;
             background: #333;
             font-size: 14px;
+            transition: all 0.3s;
         }
         
         .status-normal { color: #00ffcc; border: 1px solid #00ffcc; }
-        .status-alert { color: #fff; background: var(--danger-color) !important; animation: blink 1s infinite; }
+        .status-alert { color: #fff; background: var(--danger-color) !important; animation: blink 0.5s infinite; }
 
-        /* 日誌列表 */
         #log-container {
             flex: 1;
-            overflow-y: auto; /* 允許垂直捲動 */
+            overflow-y: auto;
             font-size: 12px;
             border: 1px solid #333;
             background: #000;
             padding: 5px;
         }
 
-        .log-entry {
-            display: flex;
-            justify-content: space-between;
-            padding: 4px 0;
-            border-bottom: 1px solid #222;
-        }
+        .log-entry { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #222; }
         .log-time { color: #888; margin-right: 10px; }
         .log-msg { color: #ddd; }
-        .log-type-alert { color: var(--danger-color); }
+        .log-type-alert { color: var(--danger-color); font-weight: bold; }
 
-        /* 載入畫面 */
         #loader-overlay {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9);
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
             z-index: 99;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
         }
         
         button {
-            background: transparent;
-            border: 1px solid var(--primary-color);
-            color: var(--primary-color);
-            padding: 10px 30px;
-            font-family: inherit;
-            cursor: pointer;
-            font-size: 16px;
-            margin-top: 20px;
+            background: transparent; border: 1px solid var(--primary-color);
+            color: var(--primary-color); padding: 15px 40px;
+            font-family: inherit; cursor: pointer; font-size: 16px; margin-top: 20px;
+            text-transform: uppercase; letter-spacing: 2px;
+            transition: 0.2s;
         }
-        button:hover { background: rgba(0, 255, 204, 0.1); }
+        button:hover { background: rgba(0, 255, 204, 0.2); box-shadow: 0 0 15px var(--primary-color); }
 
         @keyframes blink { 50% { opacity: 0.5; } }
     </style>
@@ -141,18 +128,18 @@
         <div id="log-container">
             <div class="log-entry">
                 <span class="log-time">--:--:--</span>
-                <span class="log-msg">系統初始化完成，等待啟動...</span>
+                <span class="log-msg">系統待命...</span>
             </div>
         </div>
     </div>
 
     <div id="loader-overlay">
-        <h3 id="loader-text" style="color:white;">VIRTUAL FENCE SYSTEM</h3>
+        <h3 id="loader-text" style="color:white; letter-spacing: 3px;">SECURE ZONE DEFENSE</h3>
+        <p style="color: #666; font-size: 0.8em;">AUDIO SYSTEM REQUIRED</p>
         <button id="btn-start">INITIALIZE SYSTEM</button>
     </div>
 
     <script>
-        // --- 全域變數設定 ---
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
@@ -160,31 +147,82 @@
         const logContainer = document.getElementById('log-container');
         
         let model = undefined;
-        let isDetecting = false;
-        
-        // 定義虛擬圍籬區域 (以百分比定義，適應不同螢幕解析度)
-        // x, y: 左上角起點 (0.1 = 10%), w, h: 寬高
+        // 定義警戒區 (畫面中間 50% 的區域)
         const RESTRICTED_ZONE = { x: 0.25, y: 0.25, w: 0.5, h: 0.5 }; 
-        
-        // 狀態管理
         let intrusionActive = false;
-        let lastLogTime = 0;
 
-        // --- 1. 系統啟動 ---
+        // --- Audio System (Web Audio API) ---
+        let audioCtx = null;
+        let oscillator = null;
+        let gainNode = null;
+        let sirenInterval = null;
+
+        // 1. 初始化音效系統 (必須在使用者點擊後觸發)
+        function initAudio() {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+        }
+
+        // 2. 播放警報聲 (頻率波動的 Siren)
+        function startSiren() {
+            if (oscillator) return; // 已經在響了
+
+            // 建立振盪器 (發聲源)
+            oscillator = audioCtx.createOscillator();
+            gainNode = audioCtx.createGain();
+            
+            oscillator.type = 'square'; // 方波，聲音比較刺耳，適合警報
+            oscillator.frequency.value = 700; // 初始頻率
+
+            // 連接節點: Source -> Gain -> Speaker
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            oscillator.start();
+
+            // 製造高低音切換效果 (類似警車: 嗶-布-嗶-布)
+            let isHigh = false;
+            sirenInterval = setInterval(() => {
+                if (oscillator) {
+                    const freq = isHigh ? 600 : 900;
+                    // 平滑過渡頻率
+                    oscillator.frequency.rampToValueAtTime(freq, audioCtx.currentTime + 0.1);
+                    isHigh = !isHigh;
+                }
+            }, 300); // 每 300ms 切換一次
+        }
+
+        // 3. 停止警報
+        function stopSiren() {
+            if (oscillator) {
+                oscillator.stop();
+                oscillator.disconnect();
+                oscillator = null;
+            }
+            if (sirenInterval) {
+                clearInterval(sirenInterval);
+                sirenInterval = null;
+            }
+        }
+
+        // --- Main Logic ---
+
         document.getElementById('btn-start').addEventListener('click', async (e) => {
-            e.target.innerText = "LOADING AI MODELS...";
+            e.target.innerText = "LOADING...";
             e.target.disabled = true;
             
             try {
-                model = await cocoSsd.load(); // 載入模型
-                await setupCamera();          // 啟動相機
+                initAudio(); // 啟動音效引擎
+                model = await cocoSsd.load();
+                await setupCamera();
                 
                 document.getElementById('loader-overlay').style.display = 'none';
                 resizeCanvas();
                 window.addEventListener('resize', resizeCanvas);
                 
-                addLog("System Started", "INFO");
-                predictLoop(); // 開始循環
+                addLog("System Initialized", "INFO");
+                addLog("Audio Engine: READY", "INFO");
+                predictLoop();
             } catch (err) {
                 alert("Error: " + err.message);
                 e.target.innerText = "RETRY";
@@ -206,42 +244,31 @@
             canvas.height = video.videoHeight;
         }
 
-        // --- 2. 核心邏輯循環 ---
         async function predictLoop() {
-            // 偵測物件
-            const predictions = await model.detect(video, 20, 0.3); // 降低一點閾值以提高靈敏度
-            
-            // 清空畫布
+            const predictions = await model.detect(video, 20, 0.3);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // 1. 繪製並計算「虛擬圍籬」
+            // 繪製警戒區
             const zonePixel = drawRestrictedZone();
             
-            // 2. 處理每一個偵測到的物件
             let currentIntrusion = false;
 
             predictions.forEach(prediction => {
-                // 繪製物件框
                 drawObject(prediction);
 
-                // 邏輯判斷：只有「人」才觸發警報
+                // 只有「人」且「進入警戒區」才觸發
                 if (prediction.class === 'person') {
                     if (checkIntersection(prediction.bbox, zonePixel)) {
                         currentIntrusion = true;
-                        drawHighlight(prediction.bbox); // 強調顯示
+                        drawHighlight(prediction.bbox);
                     }
                 }
             });
 
-            // 3. 更新系統狀態與日誌
             updateSystemState(currentIntrusion);
-
             requestAnimationFrame(predictLoop);
         }
 
-        // --- 3. 繪圖與計算函式 (Professional Logic) ---
-
-        // 繪製半透明的紅色警戒區
         function drawRestrictedZone() {
             const zx = canvas.width * RESTRICTED_ZONE.x;
             const zy = canvas.height * RESTRICTED_ZONE.y;
@@ -249,113 +276,93 @@
             const zh = canvas.height * RESTRICTED_ZONE.h;
 
             ctx.save();
-            ctx.strokeStyle = "rgba(255, 0, 0, 0.8)";
-            ctx.lineWidth = 3;
-            // 畫虛線效果，看起來更像工程圖
+            ctx.strokeStyle = intrusionActive ? "rgba(255, 0, 0, 1)" : "rgba(255, 0, 0, 0.6)";
+            ctx.lineWidth = intrusionActive ? 5 : 2;
             ctx.setLineDash([10, 5]); 
             ctx.strokeRect(zx, zy, zw, zh);
             
-            // 填滿淡淡的紅色
-            ctx.fillStyle = "rgba(255, 0, 0, 0.15)";
+            // 如果入侵中，背景變紅
+            ctx.fillStyle = intrusionActive ? "rgba(255, 0, 0, 0.3)" : "rgba(255, 0, 0, 0.1)";
             ctx.fillRect(zx, zy, zw, zh);
             
-            // 標示文字
             ctx.fillStyle = "#ff3333";
             ctx.font = "bold 14px Consolas";
-            ctx.fillText("RESTRICTED AREA / 禁止進入", zx + 5, zy + 20);
+            ctx.fillText("RESTRICTED AREA // 禁止進入", zx + 5, zy + 20);
             ctx.restore();
 
             return { x: zx, y: zy, w: zw, h: zh };
         }
 
-        // 碰撞檢測 (AABB Collision Detection)
-        // 判斷兩個矩形是否有重疊
         function checkIntersection(bbox, zone) {
             const [bx, by, bw, bh] = bbox;
-            
-            // 判斷不重疊的情況，取反即為重疊
             const notOverlap = (
-                bx + bw < zone.x ||    // 物體在區域左邊
-                bx > zone.x + zone.w || // 物體在區域右邊
-                by + bh < zone.y ||    // 物體在區域上邊
-                by > zone.y + zone.h    // 物體在區域下邊
+                bx + bw < zone.x || bx > zone.x + zone.w ||
+                by + bh < zone.y || by > zone.y + zone.h
             );
-
             return !notOverlap;
         }
 
         function drawObject(prediction) {
             const [x, y, width, height] = prediction.bbox;
             const isPerson = prediction.class === 'person';
-            
-            // 顏色區分：人是白色，其他是灰色
             const color = isPerson ? "#ffffff" : "#666666";
             
             ctx.strokeStyle = color;
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 1;
             ctx.strokeRect(x, y, width, height);
 
-            ctx.fillStyle = color;
-            ctx.font = "12px Consolas";
-            const label = `${prediction.class} ${(prediction.score*100).toFixed(0)}%`;
-            ctx.fillText(label, x, y - 5);
+            if(isPerson) {
+                ctx.fillStyle = color;
+                ctx.font = "12px Consolas";
+                ctx.fillText(`${prediction.class} ${(prediction.score*100).toFixed(0)}%`, x, y - 5);
+            }
         }
 
-        // 當入侵發生時，繪製強力警告框
         function drawHighlight(bbox) {
             const [x, y, width, height] = bbox;
             ctx.save();
             ctx.strokeStyle = "#ff0000";
-            ctx.lineWidth = 5;
+            ctx.lineWidth = 6;
             ctx.strokeRect(x, y, width, height);
             ctx.restore();
         }
 
-        // --- 4. 系統後端模擬 (Log Logic) ---
         function updateSystemState(isIntruderDetected) {
-            const now = Date.now();
-
             if (isIntruderDetected) {
-                // 狀態改變：正常 -> 入侵
                 if (!intrusionActive) {
+                    // --- 狀態切換：開始入侵 ---
                     intrusionActive = true;
                     statusEl.innerText = "WARNING: INTRUSION";
                     statusEl.className = "status-alert";
                     document.body.style.borderColor = "red";
-                    addLog("Detected Unauthorized Entry", "ALERT");
+                    addLog("⚠️ SECURITY BREACH DETECTED", "ALERT");
+                    
+                    // 啟動警報聲
+                    startSiren();
                 }
             } else {
-                // 狀態改變：入侵 -> 正常
                 if (intrusionActive) {
+                    // --- 狀態切換：入侵結束 ---
                     intrusionActive = false;
                     statusEl.innerText = "NORMAL";
                     statusEl.className = "status-normal";
                     document.body.style.borderColor = "transparent";
-                    addLog("Zone Clear", "INFO");
+                    addLog("Zone Clear / Threat Removed", "INFO");
+                    
+                    // 停止警報聲
+                    stopSiren();
                 }
             }
         }
 
         function addLog(message, type) {
             const timeStr = new Date().toLocaleTimeString('zh-TW', { hour12: false });
-            
             const div = document.createElement('div');
             div.className = 'log-entry';
-            
             const typeClass = type === 'ALERT' ? 'log-type-alert' : '';
-            
-            div.innerHTML = `
-                <span class="log-time">[${timeStr}]</span>
-                <span class="log-msg ${typeClass}">${message}</span>
-            `;
-            
-            // 新日誌加在最上面
+            div.innerHTML = `<span class="log-time">[${timeStr}]</span><span class="log-msg ${typeClass}">${message}</span>`;
             logContainer.prepend(div);
-            
-            // 保持日誌長度不超過 50 筆，避免記憶體溢出
-            if (logContainer.children.length > 50) {
-                logContainer.removeChild(logContainer.lastChild);
-            }
+            if (logContainer.children.length > 50) logContainer.removeChild(logContainer.lastChild);
         }
     </script>
 </body>
