@@ -1,245 +1,204 @@
-
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>On-Device AI 物件辨識</title>
+    <title>AI 虛擬圍籬監控系統</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
 
     <style>
+        /* --- Professional UI Design (Dark/Cyberpunk Style) --- */
+        :root {
+            --primary-color: #00ffcc;
+            --danger-color: #ff3333;
+            --bg-color: #0d1117;
+            --panel-bg: rgba(13, 17, 23, 0.85);
+        }
+
         body {
             margin: 0;
-            padding: 0;
-            background-color: #000;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            overflow: hidden; /* 防止捲動 */
+            background-color: var(--bg-color);
+            font-family: "Consolas", "Monaco", "Courier New", monospace; /* 使用等寬字體更像終端機 */
+            color: white;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
             height: 100vh;
         }
 
-        /* 視訊與畫布的容器 */
-        #cam-container {
+        #main-view {
             position: relative;
-            width: 100%;
-            height: 100%;
+            flex: 1; /* 佔據上方大部分空間 */
             display: flex;
             justify-content: center;
             align-items: center;
-            background: #111;
+            background: #000;
+            border-bottom: 2px solid #333;
         }
 
-        /* 影像與 Canvas 重疊 */
         video, canvas {
             position: absolute;
             width: 100%;
             height: 100%;
-            object-fit: cover; /* 讓畫面填滿手機螢幕 */
+            object-fit: cover;
         }
 
-        /* 介面覆蓋層 (UI Overlay) */
-        #ui-layer {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 10;
-            pointer-events: none; /* 讓點擊穿透到下方 */
+        /* 儀表板區域 */
+        #dashboard {
+            height: 35%; /* 下方 35% 為資訊區 */
+            background: var(--panel-bg);
+            padding: 10px;
+            box-sizing: border-box;
             display: flex;
             flex-direction: column;
+            border-top: 1px solid var(--primary-color);
+            z-index: 10;
+        }
+
+        .header-row {
+            display: flex;
             justify-content: space-between;
-            padding: 20px;
-            box-sizing: border-box;
+            align-items: center;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
         }
 
-        /* 狀態列 */
-        .status-bar {
-            background: rgba(0, 0, 0, 0.6);
-            color: #00ffcc;
-            padding: 10px 15px;
-            border-radius: 20px;
+        h2 { margin: 0; font-size: 16px; color: var(--primary-color); text-transform: uppercase; letter-spacing: 1px; }
+
+        #system-status {
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: #333;
             font-size: 14px;
-            backdrop-filter: blur(5px);
-            align-self: flex-start;
-            pointer-events: auto;
+        }
+        
+        .status-normal { color: #00ffcc; border: 1px solid #00ffcc; }
+        .status-alert { color: #fff; background: var(--danger-color) !important; animation: blink 1s infinite; }
+
+        /* 日誌列表 */
+        #log-container {
+            flex: 1;
+            overflow-y: auto; /* 允許垂直捲動 */
+            font-size: 12px;
+            border: 1px solid #333;
+            background: #000;
+            padding: 5px;
         }
 
-        /* 啟動按鈕 / 載入畫面 */
-        #start-screen {
+        .log-entry {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px solid #222;
+        }
+        .log-time { color: #888; margin-right: 10px; }
+        .log-msg { color: #ddd; }
+        .log-type-alert { color: var(--danger-color); }
+
+        /* 載入畫面 */
+        #loader-overlay {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.85);
-            z-index: 20;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 99;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            text-align: center;
-            color: white;
         }
-
+        
         button {
-            background: #007aff;
-            color: white;
-            border: none;
-            padding: 15px 40px;
-            font-size: 18px;
-            border-radius: 30px;
+            background: transparent;
+            border: 1px solid var(--primary-color);
+            color: var(--primary-color);
+            padding: 10px 30px;
+            font-family: inherit;
             cursor: pointer;
+            font-size: 16px;
             margin-top: 20px;
-            font-weight: bold;
-            box-shadow: 0 4px 15px rgba(0,122,255,0.4);
-            transition: transform 0.2s;
         }
+        button:hover { background: rgba(0, 255, 204, 0.1); }
 
-        button:active {
-            transform: scale(0.95);
-        }
-
-        button:disabled {
-            background: #555;
-            color: #888;
-            cursor: not-allowed;
-            box-shadow: none;
-        }
-
-        .loader {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #00ffcc;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin-bottom: 20px;
-            display: none; /* 預設隱藏 */
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        /* 偵測框樣式設定 (由 JS 動態繪製，此處為文字樣式) */
-        .prediction-text {
-            font-weight: bold;
-            text-transform: uppercase;
-        }
+        @keyframes blink { 50% { opacity: 0.5; } }
     </style>
 </head>
 <body>
 
-    <div id="cam-container">
+    <div id="main-view">
         <video id="video" playsinline muted autoplay></video>
         <canvas id="canvas"></canvas>
     </div>
 
-    <div id="ui-layer">
-        <div class="status-bar" id="status">等待啟動...</div>
+    <div id="dashboard">
+        <div class="header-row">
+            <h2>SYSTEM LOG // 監控日誌</h2>
+            <div id="system-status" class="status-normal">NORMAL</div>
+        </div>
+        <div id="log-container">
+            <div class="log-entry">
+                <span class="log-time">--:--:--</span>
+                <span class="log-msg">系統初始化完成，等待啟動...</span>
+            </div>
+        </div>
     </div>
 
-    <div id="start-screen">
-        <div class="loader" id="loader"></div>
-        <h2 id="loading-text">準備載入 AI 模型</h2>
-        <p style="font-size: 0.9em; color: #aaa; margin: 0 20px;">
-            請允許相機權限。<br>模型載入後可離線使用。
-        </p>
-        <button id="btn-start">開始辨識</button>
+    <div id="loader-overlay">
+        <h3 id="loader-text" style="color:white;">VIRTUAL FENCE SYSTEM</h3>
+        <button id="btn-start">INITIALIZE SYSTEM</button>
     </div>
 
-<script>
-        // ==========================================
-        //  1. 遊戲設定與變數 (新增部分)
-        // ==========================================
-        
-        // 定義遊戲要尋找的目標清單 (COCO-SSD 支援的類別)
-        // 這裡選了一些家裡或辦公室常見的物品
-        const gameTargets = [
-            { en: 'cup', zh: '杯子' },
-            { en: 'cell phone', zh: '手機' },
-            { en: 'bottle', zh: '瓶子' },
-            { en: 'keyboard', zh: '鍵盤' },
-            { en: 'mouse', zh: '滑鼠' },
-            { en: 'laptop', zh: '筆記型電腦' },
-            { en: 'remote', zh: '遙控器' },
-            { en: 'scissors', zh: '剪刀' },
-            { en: 'person', zh: '人' } // 可以自拍
-        ];
-
-        let gameState = 'idle'; // 'idle' (閒置) 或 'playing' (遊戲中)
-        let score = 0;
-        let currentTargetIdx = 0;
-        let lastSuccessTime = 0; // 用來防止重複計分的冷卻時間
-        
-        // 音效 (找到物品時播放)
-        const successAudio = new Audio('https://actions.google.com/sounds/v1/cartoon/pop.ogg');
-
-        // ==========================================
-        //  2. 核心 DOM 元素與變數 (原有部分)
-        // ==========================================
+    <script>
+        // --- 全域變數設定 ---
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const btnStart = document.getElementById('btn-start');
-        const statusText = document.getElementById('status');
-        const startScreen = document.getElementById('start-screen');
-        const loader = document.getElementById('loader');
-        const loadingText = document.getElementById('loading-text');
-
+        const statusEl = document.getElementById('system-status');
+        const logContainer = document.getElementById('log-container');
+        
         let model = undefined;
+        let isDetecting = false;
+        
+        // 定義虛擬圍籬區域 (以百分比定義，適應不同螢幕解析度)
+        // x, y: 左上角起點 (0.1 = 10%), w, h: 寬高
+        const RESTRICTED_ZONE = { x: 0.25, y: 0.25, w: 0.5, h: 0.5 }; 
+        
+        // 狀態管理
+        let intrusionActive = false;
+        let lastLogTime = 0;
 
-        // ==========================================
-        //  3. 初始化與啟動流程 (微調)
-        // ==========================================
-        btnStart.addEventListener('click', async () => {
-            btnStart.style.display = 'none';
-            loader.style.display = 'block';
-            loadingText.innerText = "正在載入 AI 模型 (約 2-5 MB)...";
+        // --- 1. 系統啟動 ---
+        document.getElementById('btn-start').addEventListener('click', async (e) => {
+            e.target.innerText = "LOADING AI MODELS...";
+            e.target.disabled = true;
             
             try {
-                await initAI();
-                startGame(); // 模型載入完成後，直接開始遊戲！
-            } catch (error) {
-                console.error(error);
-                loadingText.innerText = "錯誤: " + error.message;
-                loader.style.display = 'none';
-                btnStart.style.display = 'inline-block';
-                btnStart.innerText = "重試";
+                model = await cocoSsd.load(); // 載入模型
+                await setupCamera();          // 啟動相機
+                
+                document.getElementById('loader-overlay').style.display = 'none';
+                resizeCanvas();
+                window.addEventListener('resize', resizeCanvas);
+                
+                addLog("System Started", "INFO");
+                predictLoop(); // 開始循環
+            } catch (err) {
+                alert("Error: " + err.message);
+                e.target.innerText = "RETRY";
+                e.target.disabled = false;
             }
         });
 
-        async function initAI() {
-            model = await cocoSsd.load();
-            loadingText.innerText = "模型載入完成，正在啟動相機...";
-            await setupCamera();
-            startScreen.style.display = 'none'; 
-            resizeCanvas();
-            predictLoop();
-            window.addEventListener('resize', resizeCanvas);
-        }
-
         async function setupCamera() {
-            const constraints = {
+            const stream = await navigator.mediaDevices.getUserMedia({
                 audio: false,
-                video: {
-                    facingMode: 'environment',
-                    width: { ideal: 640 }, 
-                    height: { ideal: 480 }
-                }
-            };
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            video.srcObject = stream;
-            return new Promise((resolve) => {
-                video.onloadedmetadata = () => { resolve(video); };
+                video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
             });
+            video.srcObject = stream;
+            return new Promise(r => video.onloadedmetadata = () => r());
         }
 
         function resizeCanvas() {
@@ -247,114 +206,156 @@
             canvas.height = video.videoHeight;
         }
 
-        // ==========================================
-        //  4. 遊戲邏輯控制 (新增部分)
-        // ==========================================
-        
-        function startGame() {
-            gameState = 'playing';
-            score = 0;
-            pickNewTarget();
-            updateGameUI();
-        }
-
-        function pickNewTarget() {
-            // 隨機選擇一個新的目標
-            currentTargetIdx = Math.floor(Math.random() * gameTargets.length);
-            // 為了視覺效果，暫時將邊框變回透明
-            document.body.style.border = "none";
-        }
-
-        function updateGameUI() {
-            const target = gameTargets[currentTargetIdx];
-            // 更新上方狀態列顯示的文字
-            statusText.innerHTML = `
-                <span style="color: yellow;">目標: ${target.zh} (${target.en})</span> 
-                | <span style="color: #00ffcc; font-weight:bold;">得分: ${score}</span>
-            `;
-        }
-
-        function checkGameSuccess(predictions) {
-            if (gameState !== 'playing') return;
-
-            const targetEnName = gameTargets[currentTargetIdx].en;
-            const now = Date.now();
-
-            // 防止短時間內重複計分 (冷卻時間 1.5 秒)
-            if (now - lastSuccessTime < 1500) return;
-
-            // 檢查預測結果中，是否有符合當前目標的物品
-            // 並且信心度 (score) 要大於 0.7 (70%) 才算找到
-            const found = predictions.some(p => p.class === targetEnName && p.score > 0.7);
-
-            if (found) {
-                // 找到了！
-                score++;
-                lastSuccessTime = now;
-                successAudio.play(); // 播放音效
-
-                // 視覺回饋：讓螢幕邊緣閃爍綠色
-                document.body.style.border = "10px solid #00ff00";
-                document.body.style.boxSizing = "border-box";
-
-                // 1秒後選擇新目標
-                setTimeout(() => {
-                    pickNewTarget();
-                    updateGameUI();
-                }, 1000);
-                
-                updateGameUI(); // 立即更新分數顯示
-            }
-        }
-
-
-        // ==========================================
-        //  5. 預測循環與繪圖 (修改部分)
-        // ==========================================
+        // --- 2. 核心邏輯循環 ---
         async function predictLoop() {
-            if (!model) return;
-            const predictions = await model.detect(video, 20, 0.5);
+            // 偵測物件
+            const predictions = await model.detect(video, 20, 0.3); // 降低一點閾值以提高靈敏度
             
-            drawPredictions(predictions);
+            // 清空畫布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 1. 繪製並計算「虛擬圍籬」
+            const zonePixel = drawRestrictedZone();
+            
+            // 2. 處理每一個偵測到的物件
+            let currentIntrusion = false;
 
-            // [新增] 每次偵測完，檢查遊戲是否得分
-            checkGameSuccess(predictions);
+            predictions.forEach(prediction => {
+                // 繪製物件框
+                drawObject(prediction);
+
+                // 邏輯判斷：只有「人」才觸發警報
+                if (prediction.class === 'person') {
+                    if (checkIntersection(prediction.bbox, zonePixel)) {
+                        currentIntrusion = true;
+                        drawHighlight(prediction.bbox); // 強調顯示
+                    }
+                }
+            });
+
+            // 3. 更新系統狀態與日誌
+            updateSystemState(currentIntrusion);
 
             requestAnimationFrame(predictLoop);
         }
 
-        function drawPredictions(predictions) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.font = "16px sans-serif";
-            ctx.textBaseline = "top";
+        // --- 3. 繪圖與計算函式 (Professional Logic) ---
 
-            predictions.forEach(prediction => {
-                const [x, y, width, height] = prediction['bbox'];
-                const text = prediction['class'];
-                const scoreVal = Math.round(prediction['score'] * 100);
+        // 繪製半透明的紅色警戒區
+        function drawRestrictedZone() {
+            const zx = canvas.width * RESTRICTED_ZONE.x;
+            const zy = canvas.height * RESTRICTED_ZONE.y;
+            const zw = canvas.width * RESTRICTED_ZONE.w;
+            const zh = canvas.height * RESTRICTED_ZONE.h;
 
-                // [修改] 如果是當前目標，用顯眼的黃色框；否則用原本的青色框
-                let color = "#00FFFF"; // 預設青色
-                let textColor = "#FFFFFF";
-                
-                if (gameState === 'playing' && text === gameTargets[currentTargetIdx].en) {
-                    color = "#FFFF00"; // 目標物品改為黃色
-                    ctx.lineWidth = 6; // 線條加粗
-                } else {
-                    ctx.lineWidth = 2; // 其他物品線條變細
+            ctx.save();
+            ctx.strokeStyle = "rgba(255, 0, 0, 0.8)";
+            ctx.lineWidth = 3;
+            // 畫虛線效果，看起來更像工程圖
+            ctx.setLineDash([10, 5]); 
+            ctx.strokeRect(zx, zy, zw, zh);
+            
+            // 填滿淡淡的紅色
+            ctx.fillStyle = "rgba(255, 0, 0, 0.15)";
+            ctx.fillRect(zx, zy, zw, zh);
+            
+            // 標示文字
+            ctx.fillStyle = "#ff3333";
+            ctx.font = "bold 14px Consolas";
+            ctx.fillText("RESTRICTED AREA / 禁止進入", zx + 5, zy + 20);
+            ctx.restore();
+
+            return { x: zx, y: zy, w: zw, h: zh };
+        }
+
+        // 碰撞檢測 (AABB Collision Detection)
+        // 判斷兩個矩形是否有重疊
+        function checkIntersection(bbox, zone) {
+            const [bx, by, bw, bh] = bbox;
+            
+            // 判斷不重疊的情況，取反即為重疊
+            const notOverlap = (
+                bx + bw < zone.x ||    // 物體在區域左邊
+                bx > zone.x + zone.w || // 物體在區域右邊
+                by + bh < zone.y ||    // 物體在區域上邊
+                by > zone.y + zone.h    // 物體在區域下邊
+            );
+
+            return !notOverlap;
+        }
+
+        function drawObject(prediction) {
+            const [x, y, width, height] = prediction.bbox;
+            const isPerson = prediction.class === 'person';
+            
+            // 顏色區分：人是白色，其他是灰色
+            const color = isPerson ? "#ffffff" : "#666666";
+            
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, width, height);
+
+            ctx.fillStyle = color;
+            ctx.font = "12px Consolas";
+            const label = `${prediction.class} ${(prediction.score*100).toFixed(0)}%`;
+            ctx.fillText(label, x, y - 5);
+        }
+
+        // 當入侵發生時，繪製強力警告框
+        function drawHighlight(bbox) {
+            const [x, y, width, height] = bbox;
+            ctx.save();
+            ctx.strokeStyle = "#ff0000";
+            ctx.lineWidth = 5;
+            ctx.strokeRect(x, y, width, height);
+            ctx.restore();
+        }
+
+        // --- 4. 系統後端模擬 (Log Logic) ---
+        function updateSystemState(isIntruderDetected) {
+            const now = Date.now();
+
+            if (isIntruderDetected) {
+                // 狀態改變：正常 -> 入侵
+                if (!intrusionActive) {
+                    intrusionActive = true;
+                    statusEl.innerText = "WARNING: INTRUSION";
+                    statusEl.className = "status-alert";
+                    document.body.style.borderColor = "red";
+                    addLog("Detected Unauthorized Entry", "ALERT");
                 }
+            } else {
+                // 狀態改變：入侵 -> 正常
+                if (intrusionActive) {
+                    intrusionActive = false;
+                    statusEl.innerText = "NORMAL";
+                    statusEl.className = "status-normal";
+                    document.body.style.borderColor = "transparent";
+                    addLog("Zone Clear", "INFO");
+                }
+            }
+        }
 
-                ctx.strokeStyle = color;
-                ctx.strokeRect(x, y, width, height);
-
-                // 簡化標籤顯示，只顯示名稱
-                const label = `${text} ${scoreVal}%`;
-                const textWidth = ctx.measureText(label).width;
-                ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-                ctx.fillRect(x, y, textWidth + 10, 20);
-                ctx.fillStyle = color; // 文字顏色跟框框一樣
-                ctx.fillText(label, x + 5, y + 2);
-            });
+        function addLog(message, type) {
+            const timeStr = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+            
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            
+            const typeClass = type === 'ALERT' ? 'log-type-alert' : '';
+            
+            div.innerHTML = `
+                <span class="log-time">[${timeStr}]</span>
+                <span class="log-msg ${typeClass}">${message}</span>
+            `;
+            
+            // 新日誌加在最上面
+            logContainer.prepend(div);
+            
+            // 保持日誌長度不超過 50 筆，避免記憶體溢出
+            if (logContainer.children.length > 50) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
         }
     </script>
 </body>
